@@ -12,7 +12,7 @@
 
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~МАССИВ ДАННЫХ С ДАТЧИКОВ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    dht11 DHT_array[1]; 
+    dht11 DHT_array[10];
    
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~МАССИВ ДАННЫХ С ДАТЧИКОВ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -22,7 +22,7 @@ void setup()
   Serial.begin(9600);   // Скорость работы serial порта
   
   download_config(); // сначала скачиваем откуда-то конфигурацию устройства.(тут узнаем что будет подключено и сколько)
-  current_config.board = UNO; // используемая плата
+  current_config.board = MEGA; // используемая плата
   current_config.number_of_temperature_sensors = 1;  // запишем в конфиг число датчиков температуры(потом это надо будет убрать) ПРОБЛЕМА!!!
   
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~УСТАНОВИМ РАСПИНОВКУ ПОД ДАТЧИКИ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -35,7 +35,8 @@ void setup()
   else
   {
         // распиновка под мегу
-        
+        #define DHT11_zero 22     // Нулевой датчик DHT11 подключен к цифровому пину номер 2
+        pinMode(DHT11_zero, INPUT);
     
     
   }
@@ -50,7 +51,7 @@ void loop()
 {
       delay(300);
       int chk = DHT_array[0].read(DHT11_zero);    // Чтение данных
-      /*switch (chk)
+      switch (chk)
       {
       case DHTLIB_OK:  
           break;
@@ -63,13 +64,12 @@ void loop()
       default:
           Serial.println("Unknown error, \t");
           break;
-      }*/
+      }
   // Выводим показания влажности и температуры
   Serial.print("Vlashnost' = ");
   Serial.print(DHT_array[0].humidity, 1);
   Serial.print(", Temperatyra = ");
   Serial.println(DHT_array[0].temperature,1);
-  
   
   
 

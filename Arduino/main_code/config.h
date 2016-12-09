@@ -1,5 +1,5 @@
-#define UNO -1
-#define MEGA -2
+#define UNO -2
+#define MEGA -3
 
 class configuration // класс описывающий количество подключенных датчиков различных типов
 {
