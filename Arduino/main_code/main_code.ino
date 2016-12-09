@@ -6,70 +6,43 @@
 
 
   //объявление класса current_config типа configuration
-  configuration current_config;
-
-
-
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~МАССИВ ДАННЫХ С ДАТЧИКОВ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    dht11 DHT_array[10];
-   
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~МАССИВ ДАННЫХ С ДАТЧИКОВ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
+  configuration Current_config;
+  dht11 DHT;       
 void setup() 
 {
   Serial.begin(9600);   // Скорость работы serial порта
   
   download_config(); // сначала скачиваем откуда-то конфигурацию устройства.(тут узнаем что будет подключено и сколько)
-  current_config.board = MEGA; // используемая плата
-  current_config.number_of_temperature_sensors = 1;  // запишем в конфиг число датчиков температуры(потом это надо будет убрать) ПРОБЛЕМА!!!
+  Current_config.number_of_temperature_sensors = 1;  // запишем в конфиг число датчиков температуры(потом это надо будет убрать) ПРОБЛЕМА!!!
+  //Current_config.board = UNO;
   
-  // ~~~~~~~~~~~~~~~~~~~~~~~~~~УСТАНОВИМ РАСПИНОВКУ ПОД ДАТЧИКИ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  if(current_config.board == UNO)
-  {
-        // распиновка под уну
-        #define DHT11_zero 2     // Нулевой датчик DHT11 подключен к цифровому пину номер 2
-        pinMode(DHT11_zero, INPUT);
-  }
-  else
-  {
-        // распиновка под мегу
-        #define DHT11_zero 22     // Нулевой датчик DHT11 подключен к цифровому пину номер 2
-        pinMode(DHT11_zero, INPUT);
-    
-    
-  }
-  // ~~~~~~~~~~~~~~~~~~~~~~~~~~УСТАНОВИМ РАСПИНОВКУ ПОД ДАТЧИКИ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  
-   
-  
+  #ifdef UNO //если определена UNO,то :
+      //распиновки под UNO
+      pinMode(digital_pins_UNO[2],INPUT);  // температура
+      pinMode(digital_pins_UNO[5],INPUT);  // движение
+      pinMode(digital_pins_UNO[6],OUTPUT); // диод
+  #else
+      //распиновки под MEGA
+      pinMode(digital_pins_MEGA[2],INPUT);  // температура
+      pinMode(digital_pins_MEGA[5],INPUT);  // движение
+      pinMode(digital_pins_MEGA[6],OUTPUT); // диод          
+  #endif
   
 }
 
 void loop() 
 {
-      delay(300);
-      int chk = DHT_array[0].read(DHT11_zero);    // Чтение данных
-      switch (chk)
-      {
-      case DHTLIB_OK:  
-          break;
-      case DHTLIB_ERROR_CHECKSUM:
-          Serial.println("Checksum error, \t");
-          break;
-      case DHTLIB_ERROR_TIMEOUT:
-          Serial.println("Time out error, \t");
-          break;
-      default:
-          Serial.println("Unknown error, \t");
-          break;
-      }
-  // Выводим показания влажности и температуры
-  Serial.print("Vlashnost' = ");
-  Serial.print(DHT_array[0].humidity, 1);
-  Serial.print(", Temperatyra = ");
-  Serial.println(DHT_array[0].temperature,1);
+  //delay(300);
+  DHT.read(digital_pins_UNO[2]);
+  Serial.print("Humidity = ");
+  Serial.print(DHT.humidity, 1);
+  Serial.print(", Temperature = ");
+  Serial.println(DHT.temperature,1); 
+  
+  if(digitalRead(digital_pins_UNO[5]))
+  digitalWrite(digital_pins_UNO[6],HIGH);
+  else digitalWrite(digital_pins_UNO[6],LOW);
+  
   
   
 
@@ -78,8 +51,6 @@ void loop()
 
 void download_config()
 {
-  
-  
   
   
   
