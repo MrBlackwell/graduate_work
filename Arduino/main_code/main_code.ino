@@ -14,34 +14,35 @@ void setup()
   
   download_config(); // сначала скачиваем откуда-то конфигурацию устройства.(тут узнаем что будет подключено и сколько)
   Current_config.number_of_temperature_sensors = 1;  // запишем в конфиг число датчиков температуры(потом это надо будет убрать) ПРОБЛЕМА!!!
-  //Current_config.board = UNO;
-  
   #ifdef UNO //если определена UNO,то :
-      //распиновки под UNO
-      pinMode(digital_pins_UNO[2],INPUT);  // температура
-      pinMode(digital_pins_UNO[5],INPUT);  // движение
-      pinMode(digital_pins_UNO[6],OUTPUT); // диод
+      //массивы с распиновками под UNO
+      digitalPins[2] = 2;             // температура
+      digitalPins[5] = 5;             // движение
+      digitalPins[6] = 6;             // диод  
+      pinMode(digitalPins[2],INPUT);  // температура
+      pinMode(digitalPins[5],INPUT);  // движение
+      pinMode(digitalPins[6],OUTPUT); // диод      
   #else
-      //распиновки под MEGA
-      pinMode(digital_pins_MEGA[2],INPUT);  // температура
-      pinMode(digital_pins_MEGA[5],INPUT);  // движение
-      pinMode(digital_pins_MEGA[6],OUTPUT); // диод          
+      //массивы с распиновками под MEGA
+      pinMode(digitalPins[2],INPUT);  // температура
+      pinMode(digitalPins[5],INPUT);  // движение
+      pinMode(digitalPins[6],OUTPUT); // диод    
   #endif
-  
 }
 
 void loop() 
 {
-  //delay(300);
-  DHT.read(digital_pins_UNO[2]);
+  /*
+  delay(300);
+  DHT.read(digitalPins[2]);
   Serial.print("Humidity = ");
   Serial.print(DHT.humidity, 1);
   Serial.print(", Temperature = ");
   Serial.println(DHT.temperature,1); 
-  
-  if(digitalRead(digital_pins_UNO[5]))
-  digitalWrite(digital_pins_UNO[6],HIGH);
-  else digitalWrite(digital_pins_UNO[6],LOW);
+  */
+  if(digitalRead(digitalPins[5]))
+  digitalWrite(digitalPins[6],HIGH);
+  else digitalWrite(digitalPins[6],LOW);
   
   
   
