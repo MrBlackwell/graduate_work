@@ -6,6 +6,7 @@
 #include <MFRC522.h>
 #include <LiquidCrystal.h>
 #include <MD5.h>
+#include <limits.h>
 #include "utility/debug.h"
 
 #include <Keypad.h>
@@ -30,7 +31,7 @@ Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ, ADAFRUIT_CC3000_VBAT, SPI_CLOCK_DIVIDER);
 
 #define WLAN_SECURITY   WLAN_SEC_WPA2 // Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
-#define IDLE_TIMEOUT_MS  1000
+#define IDLE_TIMEOUT_MS  3000
 #define WEBSITE      "www.m92910dr.bget.ru"
 
 // Блок DEFINE
@@ -55,7 +56,10 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
 #define G_diod 29
 #define R_diod 30
 
-#define ARM_diod 2
+#define BEEP_pin 45
+#define ARM_diod 46
+#define ARM_button 47
+#define DISARM_button 48
 
 // Пины под сенсорную панель
 #define SCL_PIN 37
@@ -70,16 +74,24 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
 
 // прототипы функций
 void send_recv();
+int check_sensors();
 void activate_sensors();
 char* connection_data();
 char menu_choise();
 void write_string_EEPROM (int Addr, char* Str);
 char* read_string_EEPROM (int Addr, int lng);
-void write_label_EEPROM (char* label);
-void delete_label_EEPROM (char* label);
 void set_on_arm();
 void disarm();
 void read_card();
+void parser();
+void write_label_EEPROM(char* label);
+void delete_label_EEPROM (char* label);
+int find_same_label(char* label);
+void check_arm();
+
+
+
+
 
 //
 dht11 DHT;
@@ -95,14 +107,13 @@ int parse_counter = 0;
 
 void setup()
 {
-  parser();
-
-  // Зажигаем диод сигнализирующий о подаче питания
-  set_on_arm();
-  digitalWrite(B_diod, HIGH);
   Serial.begin(115200);
-
+  SPI.begin(); // Init SPI bus
+  rfid.PCD_Init(); // Init MFRC522
+  digitalWrite(B_diod, HIGH);
   lcd.begin(16, 2);                  // Задаем размерность экрана
+
+  //set_on_arm();
 
   // Распиновки под MEGA
   pinMode(temperature_sensor, INPUT);
@@ -116,10 +127,15 @@ void setup()
   pinMode(G_diod, OUTPUT); // RGB
   pinMode(B_diod, OUTPUT); // RGB
 
+  pinMode(ARM_diod, OUTPUT);
+  pinMode(BEEP_pin, OUTPUT);
+  pinMode(ARM_button, OUTPUT);
+  pinMode(DISARM_button, OUTPUT);
 
   /* Инициализация модуля */
   Serial.println();
   Serial.println(F("Initializing..."));
+
   if (!cc3000.begin())
   {
     Serial.println(F("Couldn't begin()! Check your wiring?"));
@@ -144,6 +160,7 @@ void setup()
     lcd.print("2-RFID ; 3-Save");       // Выводим текст
 
 
+    int set_default_conn = 1;
     while (menu != '3')
     {
       lcd.clear();
@@ -153,11 +170,11 @@ void setup()
       lcd.print("2-RFID ; 3-Exit");       // Выводим текст
 
       menu = menu_choise();
-
       switch (menu)
       { // выбор коннект инфо или рфид
         case '1':
           {
+            set_default_conn = 0;
             lcd.clear();
             lcd.setCursor(0, 0);
             lcd.print("Enter SSID");       // Выводим текст
@@ -185,20 +202,28 @@ void setup()
           }
         case '3':
           {
-            break;
+            if (set_default_conn == 1)
+            {
+              char* buf = (char*) malloc(MAX_LENGHT);
+              buf = read_string_EEPROM(2 , EEPROM.read(0) );
+              strcpy(WLAN_SSID, buf);
+
+              buf = (char*) malloc(MAX_LENGHT);
+              buf = read_string_EEPROM(2 + strlen(WLAN_SSID) , EEPROM.read(1) );
+              strcpy(WLAN_PASS, buf);
+              set_default_conn = 0;
+              break;
+            }
+            else
+            {
+              break;
+            }
           }
       }
     }
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Master mode");       // Выводим текст
-    buf = (char*) malloc(MAX_LENGHT);
-    buf = read_string_EEPROM(2 , EEPROM.read(0) );
-    strcpy(WLAN_SSID, buf);
-
-    buf = (char*) malloc(MAX_LENGHT);
-    buf = read_string_EEPROM(2 + strlen(WLAN_SSID) , EEPROM.read(1) );
-    strcpy(WLAN_PASS, buf);
   }
   else
   { // usermode
@@ -234,42 +259,41 @@ void setup()
     Serial.println(F("req"));
     delay(100); // ToDo: Insert a DHCP timeout!
   }
+  Serial.println("Setup finished");
 }
 
 void loop()
 {
-  //arm_disarm();
   send_recv();
-
-
-
+  check_arm();
 }
 
 void send_recv()
 {
+  Serial.println("send_recv function");
   char WEBPAGE[30] = "/onoff.php";
   char added_part[25] = "?sensors=";
-
+  parse_counter = 0;
+  
   ip = 0;
   // Try looking up the website's IP address
   while (ip == 0)
   {
     if (! cc3000.getHostByName(WEBSITE, &ip))
     {
-      Serial.println(F("Couldn't resolve!"));
+      Serial.println(F("Couldn't resolve the IP address!"));
+      Serial.println(F("Reboot"));
+      delay(50);
     }
     delay(500);
   }
 
   www = cc3000.connectTCP(ip, 80);
 
-
-
-  // тут надо считывать значения в 5 разрядов + переводить
   char temp[2];
   sprintf(temp, "%d", check_sensors());
   strcat(added_part, temp);
-
+    
   strcat(added_part, "&wet=");
   DHT.read(temperature_sensor);
   sprintf(temp, "%d", DHT.temperature);
@@ -288,6 +312,9 @@ void send_recv()
   // НАШ ЗАПРОС
   if (www.connected())
   {
+    Serial.println();
+    Serial.println("Connection opened");
+
     Serial.print(WEBSITE); Serial.println(WEBPAGE);
     digitalWrite(B_diod, LOW);
     www.fastrprint(F("POST "));
@@ -308,10 +335,9 @@ void send_recv()
   else
   {
     Serial.println(F("Connection failed"));
-    lcd.setCursor(0, 1);
-    lcd.print("Shit happens");       // Выводим текст
     return;
   }
+  Serial.println("Request send");
 
   // ПОЛУЧЕННЫЙ ОТВЕТ
   unsigned long lastRead = millis();
@@ -326,25 +352,54 @@ void send_recv()
     }
   }
 
+  Serial.println("Answer received");
   parser();
+  Serial.println("Close connect");
   www.close();
 }
 
 int check_sensors()
 {
   int result = 0;
-  if ((digitalRead(motion_sensor) == HIGH) && (active_sensors[4] == 1)) result += 16;
-  if ((digitalRead(fume_sensor) == HIGH) && (active_sensors[3] == 1)) result += 8;
-  if ((digitalRead(water_sensor) == HIGH) && (active_sensors[2] == 1)) result += 4;
-  if ((digitalRead(vibration_sensor) == HIGH) && (active_sensors[1] == 1)) result += 2;
-  if ((digitalRead(penetration_sensor) == HIGH) && (active_sensors[0] == 1)) result += 1;
+  int signals[5];
+  if (digitalRead(motion_sensor) == HIGH) signals[4] = 1;  // чтобы датчик движения не пищал
+  if (digitalRead(fume_sensor) == HIGH) signals[3] = 1;
+  if (digitalRead(water_sensor) == HIGH) signals[2] = 1;
+  if (digitalRead(vibration_sensor) == HIGH) signals[1] = 1;
+  if (digitalRead(penetration_sensor) == HIGH) signals[0] = 1;
+
+  if ((signals[4] == 1) && (active_sensors[4] == 1) && (EEPROM.read(ALARM) == 1)) result += 16;
+  if ((signals[3] == 1) && (active_sensors[3] == 1) && (EEPROM.read(ALARM) == 1)) result += 8;
+  if ((signals[2] == 1) && (active_sensors[2] == 1) && (EEPROM.read(ALARM) == 1)) result += 4;
+  if ((signals[1] == 1) && (active_sensors[1] == 1) && (EEPROM.read(ALARM) == 1)) result += 2;
+  if ((signals[0] == 1) && (active_sensors[0] == 1) && (EEPROM.read(ALARM) == 1)) result += 1;
+
+  /*
+    for (int i = 0; i < 5; i++)
+    {
+    if ((signals[i] == 1) && (active_sensors[i] == 1) && (EEPROM.read(ALARM) == 1))
+    {
+      digitalWrite(BEEP_pin, HIGH);
+      delay(100);
+      digitalWrite(BEEP_pin, LOW);
+      delay(100);
+      digitalWrite(BEEP_pin, HIGH);
+      delay(100);
+      digitalWrite(BEEP_pin, LOW);
+      delay(100);
+      digitalWrite(BEEP_pin, HIGH);
+      delay(100);
+      digitalWrite(BEEP_pin, LOW);
+      break;
+    }
+    }
+  */
   return result;
 }
 
 void activate_sensors()
 {
   int num = atoi(parse_activity);
-
   for (int j = 0; j < 7; j++)
     active_sensors[j] = 0;
 
@@ -695,25 +750,45 @@ char* read_string_EEPROM (int Addr, int lng)
 
 void set_on_arm()
 {
+  digitalWrite(BEEP_pin, HIGH);
+  delay(100);
+  digitalWrite(BEEP_pin, LOW);
+
+  delay(5000);
   EEPROM.write(ALARM, 1);
-  delay(20);
+
   if (EEPROM.read(ALARM) == 1)
+  {
+
     digitalWrite(ARM_diod, HIGH);
+
+    digitalWrite(BEEP_pin, HIGH);
+    delay(100);
+    digitalWrite(BEEP_pin, LOW);
+  }
 }
 
 void disarm()
 {
   EEPROM.write(ALARM, 0);
   delay(20);
+
   if (EEPROM.read(ALARM) == 0)
+  {
     digitalWrite(ARM_diod, LOW);
+
+    digitalWrite(BEEP_pin, HIGH);
+    delay(100);
+    digitalWrite(BEEP_pin, LOW);
+    delay(100);
+    digitalWrite(BEEP_pin, HIGH);
+    delay(100);
+    digitalWrite(BEEP_pin, LOW);
+  }
 }
 
 void read_card()
 {
-  SPI.begin(); // Init SPI bus
-  rfid.PCD_Init(); // Init MFRC522
-
   int out = 0;
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -722,8 +797,7 @@ void read_card()
   while (out == 0)
   {
     // Look for new cards
-    if ( ! rfid.PICC_IsNewCardPresent())
-      continue;
+    continue;
     // Verify if the NUID has been readed
     if ( ! rfid.PICC_ReadCardSerial())
       continue;
@@ -753,27 +827,34 @@ void read_card()
 
 void parser()
 {
-  char controlbit = '1';
-  switch (controlbit)
-  {
+  /*
+    char hash[32];
+    for (int i = 0; i < 32; i++)
+    {
+    hash[i] = parse[parse_counter - 35 + i];
+    }
+
+    char controlbit = parse[parse_counter - 36];
+
+    switch (controlbit)
+    {
     case '0':
       { // ничего не делаем
         break;
       }
     case '1':
       { // записываем в EEPROM
-        char hash[32] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c'};
         write_label_EEPROM(hash);
         break;
       }
     case '2':
       { // удаляем из EEPROM
-        char hash[32] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c'};
         delete_label_EEPROM(hash);
         break;
       }
-  }
+    }
 
+  */
 
   // блок который отвечает за активацию сенсоров
   parse_activity[2] = parse[parse_counter - 1];
@@ -783,54 +864,123 @@ void parser()
   //
 }
 
-void write_label_EEPROM (char* label)
+void write_label_EEPROM(char* label)
 {
-  int writed_labels = EEPROM.read(LABEL_AMOUNT);
-  if (writed_labels == 0)
-  { // пишем начиная с LAST_BUSY+1
-    write_string_EEPROM(LAST_BUSY + 1, label);
-    EEPROM.write(LABEL_AMOUNT, EEPROM.read(LABEL_AMOUNT) + 1); // перезаписываем 44ую
-    EEPROM.write(LAST_BUSY, LAST_BUSY + 31); // перезаписываем 45ую
-  }
-  else  // НЕ В НАЧАЛО
-  {
-    // есть свободные в середине
-    if (EEPROM.read(LAST_BUSY) != LAST_BUSY + writed_labels * 32 - 1)
-    {
-      for (int i = LAST_BUSY + 1; i < EEPROM.read(LAST_BUSY); i++)
-      {
-        if (EEPROM.read(i) == 0)
-          if (EEPROM.read(i + 1) == 0)
-            if (EEPROM.read(i + 2) == 0)
-              if (EEPROM.read(i + 3) == 0)
-                if (EEPROM.read(i + 4) == 0)
-                  if (EEPROM.read(i + 5) == 0)
-                    if (EEPROM.read(i + 6) == 0)
-                      if (EEPROM.read(i + 7) == 0)
-                        if (EEPROM.read(i + 8) == 0)
-                          if (EEPROM.read(i + 9) == 0)
-                            if (EEPROM.read(i + 10) == 0)
-                            {
-                              write_string_EEPROM(i, label);
-                              EEPROM.write(LABEL_AMOUNT, EEPROM.read(LABEL_AMOUNT) + 1); // перезаписываем 44ую
-                            }
-      }
+  if (find_same_label(label) == 0) {
+
+    if (EEPROM.read(LABEL_AMOUNT) == 0)
+    { // если в начало пишем
+      write_string_EEPROM (LAST_BUSY + 1, label);
+      EEPROM.write(LABEL_AMOUNT, 1);
+      EEPROM.write(LAST_BUSY, LAST_BUSY + 32);
     }
     else
-    { // пишем начиная с LAST_BUSY
-      write_string_EEPROM(EEPROM.read(LAST_BUSY) + 1, label);
-      EEPROM.write(LABEL_AMOUNT, EEPROM.read(LABEL_AMOUNT) + 1); // перезаписываем 44ую
-      EEPROM.write(LAST_BUSY, LAST_BUSY + 31); // перезаписываем 45ую
+    { // не в начало
+      int writed_labels;
+      writed_labels = (EEPROM.read(LAST_BUSY) - LAST_BUSY) / 32;
+
+      if (writed_labels > EEPROM.read(LABEL_AMOUNT))
+      { // если есть пустое место в середине
+        for (int i = LAST_BUSY + 1; i < EEPROM.read(LAST_BUSY); i += 32)
+        {
+          if (EEPROM.read(i) == 0)
+          {
+            write_string_EEPROM (i, label);
+            EEPROM.write(LABEL_AMOUNT, EEPROM.read(LABEL_AMOUNT) + 1);
+            break;
+          }
+        }
+      }
+      else
+      { // пишем в конец
+        write_string_EEPROM (EEPROM.read(LAST_BUSY) + 1, label);
+        EEPROM.write(LABEL_AMOUNT, EEPROM.read(LABEL_AMOUNT) + 1);
+        EEPROM.write(LAST_BUSY, EEPROM.read(LAST_BUSY) + 32);
+      }
     }
+
   }
+  else return;
 }
 
 void delete_label_EEPROM (char* label)
 {
+  for (int i = LAST_BUSY + 1; i < EEPROM.read(LAST_BUSY); i += 32)
+  {
+    if (EEPROM.read(i) == label[0])
+      if (EEPROM.read(i + 1) == label[1])
+        if (EEPROM.read(i + 2) == label[2])
+          if (EEPROM.read(i + 3) == label[3])
+          {
+            for (int j = i; j < i + 32; j++)
+            {
+              EEPROM.write(j, 0);
+            }
+            EEPROM.write(LABEL_AMOUNT, EEPROM.read(LABEL_AMOUNT) - 1);
 
-
-
-
+            if ((i + 31) == EEPROM.read(LAST_BUSY))
+            {
+              EEPROM.write((LAST_BUSY), i - 1);
+            }
+          }
+  }
 }
 
+int find_same_label(char* label)
+{
+  int reply = 0;
+  for (int i = LAST_BUSY + 1; i < EEPROM.read(LAST_BUSY); i += 32)
+  {
+    if (EEPROM.read(i) == label[0])
+      if (EEPROM.read(i + 1) == label[1])
+        if (EEPROM.read(i + 2) == label[2])
+          if (EEPROM.read(i + 3) == label[3])
+          {
+            reply = 1;
+            return reply;
+          }
+  }
+  return reply;
+}
+
+void check_arm()
+{
+  if (digitalRead(ARM_button) == HIGH)
+  {
+    set_on_arm();
+  }
+
+  if (digitalRead(DISARM_button) == HIGH)
+  {
+    digitalWrite(BEEP_pin, HIGH);
+    delay(300);
+    digitalWrite(BEEP_pin, LOW);
+
+    for (int i = 0; i < 250; i++)
+    {
+      if ( ! rfid.PICC_IsNewCardPresent())
+        continue;
+      // Verify if the NUID has been readed
+      if ( ! rfid.PICC_ReadCardSerial())
+        continue;
+      else break;
+    }
+    char card_num[13];
+    char buf[3];
+    sprintf(buf, "%d", rfid.uid.uidByte[0]);
+    strcpy(card_num, buf);
+    sprintf(buf, "%d", rfid.uid.uidByte[1]);
+    strcat(card_num, buf);
+    sprintf(buf, "%d", rfid.uid.uidByte[2]);
+    strcat(card_num, buf);
+    sprintf(buf, "%d", rfid.uid.uidByte[3]);
+    strcat(card_num, buf);
+
+    unsigned char* hash = MD5::make_hash(card_num);
+    char* md5str = MD5::make_digest(hash, 16);
+    Serial.println(md5str);
+
+    if (find_same_label(md5str) == 1) disarm();
+  }
+}
 
