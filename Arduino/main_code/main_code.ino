@@ -6,7 +6,6 @@
 #include <MFRC522.h>
 #include <LiquidCrystal.h>
 #include <MD5.h>
-#include <limits.h>
 #include "utility/debug.h"
 
 #include <Keypad.h>
@@ -31,7 +30,7 @@ Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ, ADAFRUIT_CC3000_VBAT, SPI_CLOCK_DIVIDER);
 
 #define WLAN_SECURITY   WLAN_SEC_WPA2 // Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
-#define IDLE_TIMEOUT_MS  3000
+#define IDLE_TIMEOUT_MS  1000
 #define WEBSITE      "www.m92910dr.bget.ru"
 
 // Блок DEFINE
@@ -39,7 +38,6 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
 #define MAX_LENGHT 20 // максимальная длина полей SSID/PASS
 #define LABEL_AMOUNT 44 // ячейка с данными о кол-ве меток
 #define LAST_BUSY 45 // ячейка с данными о кол-ве меток
-#define ALARM 43
 
 // Сигнальные
 #define water_sensor 23
@@ -84,15 +82,10 @@ void set_on_arm();
 void disarm();
 void read_card();
 void parser();
-void write_label_EEPROM(char* label);
+void write_label_EEPROM (char* label);
 void delete_label_EEPROM (char* label);
 int find_same_label(char* label);
 void check_arm();
-
-
-
-
-
 //
 dht11 DHT;
 LiquidCrystal lcd(31, 32, 33, 34, 35, 36); // (RS, E, DB4, DB5, DB6, DB7)
@@ -110,10 +103,10 @@ void setup()
   Serial.begin(115200);
   SPI.begin(); // Init SPI bus
   rfid.PCD_Init(); // Init MFRC522
+  
   digitalWrite(B_diod, HIGH);
-  lcd.begin(16, 2);                  // Задаем размерность экрана
 
-  //set_on_arm();
+  lcd.begin(16, 2);                  // Задаем размерность экрана
 
   // Распиновки под MEGA
   pinMode(temperature_sensor, INPUT);
@@ -129,13 +122,10 @@ void setup()
 
   pinMode(ARM_diod, OUTPUT);
   pinMode(BEEP_pin, OUTPUT);
-  pinMode(ARM_button, OUTPUT);
-  pinMode(DISARM_button, OUTPUT);
 
   /* Инициализация модуля */
   Serial.println();
   Serial.println(F("Initializing..."));
-
   if (!cc3000.begin())
   {
     Serial.println(F("Couldn't begin()! Check your wiring?"));
@@ -159,7 +149,6 @@ void setup()
     lcd.setCursor(0, 1);
     lcd.print("2-RFID ; 3-Save");       // Выводим текст
 
-
     int set_default_conn = 1;
     while (menu != '3')
     {
@@ -170,11 +159,11 @@ void setup()
       lcd.print("2-RFID ; 3-Exit");       // Выводим текст
 
       menu = menu_choise();
+
       switch (menu)
       { // выбор коннект инфо или рфид
         case '1':
           {
-            set_default_conn = 0;
             lcd.clear();
             lcd.setCursor(0, 0);
             lcd.print("Enter SSID");       // Выводим текст
@@ -221,9 +210,6 @@ void setup()
           }
       }
     }
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Master mode");       // Выводим текст
   }
   else
   { // usermode
@@ -259,41 +245,42 @@ void setup()
     Serial.println(F("req"));
     delay(100); // ToDo: Insert a DHCP timeout!
   }
-  Serial.println("Setup finished");
 }
 
 void loop()
 {
   send_recv();
   check_arm();
+
+
 }
 
 void send_recv()
 {
-  Serial.println("send_recv function");
   char WEBPAGE[30] = "/onoff.php";
   char added_part[25] = "?sensors=";
   parse_counter = 0;
-  
+
   ip = 0;
   // Try looking up the website's IP address
   while (ip == 0)
   {
     if (! cc3000.getHostByName(WEBSITE, &ip))
     {
-      Serial.println(F("Couldn't resolve the IP address!"));
-      Serial.println(F("Reboot"));
-      delay(50);
+      Serial.println(F("Couldn't resolve!"));
     }
     delay(500);
   }
 
   www = cc3000.connectTCP(ip, 80);
 
+
+
+  // тут надо считывать значения в 5 разрядов + переводить
   char temp[2];
   sprintf(temp, "%d", check_sensors());
   strcat(added_part, temp);
-    
+
   strcat(added_part, "&wet=");
   DHT.read(temperature_sensor);
   sprintf(temp, "%d", DHT.temperature);
@@ -314,7 +301,6 @@ void send_recv()
   {
     Serial.println();
     Serial.println("Connection opened");
-
     Serial.print(WEBSITE); Serial.println(WEBPAGE);
     digitalWrite(B_diod, LOW);
     www.fastrprint(F("POST "));
@@ -337,8 +323,8 @@ void send_recv()
     Serial.println(F("Connection failed"));
     return;
   }
-  Serial.println("Request send");
 
+  Serial.println("Request send");
   // ПОЛУЧЕННЫЙ ОТВЕТ
   unsigned long lastRead = millis();
   while (www.connected() && (millis() - lastRead < IDLE_TIMEOUT_MS))
@@ -351,55 +337,27 @@ void send_recv()
       lastRead = millis();
     }
   }
-
   Serial.println("Answer received");
   parser();
-  Serial.println("Close connect");
   www.close();
+  Serial.println("Connection closed");
 }
 
 int check_sensors()
 {
   int result = 0;
-  int signals[5];
-  if (digitalRead(motion_sensor) == HIGH) signals[4] = 1;  // чтобы датчик движения не пищал
-  if (digitalRead(fume_sensor) == HIGH) signals[3] = 1;
-  if (digitalRead(water_sensor) == HIGH) signals[2] = 1;
-  if (digitalRead(vibration_sensor) == HIGH) signals[1] = 1;
-  if (digitalRead(penetration_sensor) == HIGH) signals[0] = 1;
-
-  if ((signals[4] == 1) && (active_sensors[4] == 1) && (EEPROM.read(ALARM) == 1)) result += 16;
-  if ((signals[3] == 1) && (active_sensors[3] == 1) && (EEPROM.read(ALARM) == 1)) result += 8;
-  if ((signals[2] == 1) && (active_sensors[2] == 1) && (EEPROM.read(ALARM) == 1)) result += 4;
-  if ((signals[1] == 1) && (active_sensors[1] == 1) && (EEPROM.read(ALARM) == 1)) result += 2;
-  if ((signals[0] == 1) && (active_sensors[0] == 1) && (EEPROM.read(ALARM) == 1)) result += 1;
-
-  /*
-    for (int i = 0; i < 5; i++)
-    {
-    if ((signals[i] == 1) && (active_sensors[i] == 1) && (EEPROM.read(ALARM) == 1))
-    {
-      digitalWrite(BEEP_pin, HIGH);
-      delay(100);
-      digitalWrite(BEEP_pin, LOW);
-      delay(100);
-      digitalWrite(BEEP_pin, HIGH);
-      delay(100);
-      digitalWrite(BEEP_pin, LOW);
-      delay(100);
-      digitalWrite(BEEP_pin, HIGH);
-      delay(100);
-      digitalWrite(BEEP_pin, LOW);
-      break;
-    }
-    }
-  */
+  if ((digitalRead(motion_sensor) == HIGH) && (active_sensors[4] == 1)) result += 16;
+  if ((digitalRead(fume_sensor) == HIGH) && (active_sensors[3] == 1)) result += 8;
+  if ((digitalRead(water_sensor) == HIGH) && (active_sensors[2] == 1)) result += 4;
+  if ((digitalRead(vibration_sensor) == HIGH) && (active_sensors[1] == 1)) result += 2;
+  if ((digitalRead(penetration_sensor) == HIGH) && (active_sensors[0] == 1)) result += 1;
   return result;
 }
 
 void activate_sensors()
 {
   int num = atoi(parse_activity);
+
   for (int j = 0; j < 7; j++)
     active_sensors[j] = 0;
 
@@ -750,41 +708,18 @@ char* read_string_EEPROM (int Addr, int lng)
 
 void set_on_arm()
 {
-  digitalWrite(BEEP_pin, HIGH);
-  delay(100);
-  digitalWrite(BEEP_pin, LOW);
 
-  delay(5000);
-  EEPROM.write(ALARM, 1);
 
-  if (EEPROM.read(ALARM) == 1)
-  {
 
-    digitalWrite(ARM_diod, HIGH);
-
-    digitalWrite(BEEP_pin, HIGH);
-    delay(100);
-    digitalWrite(BEEP_pin, LOW);
-  }
 }
 
 void disarm()
 {
-  EEPROM.write(ALARM, 0);
-  delay(20);
 
-  if (EEPROM.read(ALARM) == 0)
-  {
-    digitalWrite(ARM_diod, LOW);
 
-    digitalWrite(BEEP_pin, HIGH);
-    delay(100);
-    digitalWrite(BEEP_pin, LOW);
-    delay(100);
-    digitalWrite(BEEP_pin, HIGH);
-    delay(100);
-    digitalWrite(BEEP_pin, LOW);
-  }
+
+
+
 }
 
 void read_card()
@@ -797,7 +732,8 @@ void read_card()
   while (out == 0)
   {
     // Look for new cards
-    continue;
+    if ( ! rfid.PICC_IsNewCardPresent())
+      continue;
     // Verify if the NUID has been readed
     if ( ! rfid.PICC_ReadCardSerial())
       continue;
@@ -827,17 +763,16 @@ void read_card()
 
 void parser()
 {
-  /*
-    char hash[32];
-    for (int i = 0; i < 32; i++)
-    {
+  char hash[32];
+  for (int i = 0; i < 32; i++)
+  {
     hash[i] = parse[parse_counter - 35 + i];
-    }
+  }
 
-    char controlbit = parse[parse_counter - 36];
+  char controlbit = parse[parse_counter - 36];
 
-    switch (controlbit)
-    {
+  switch (controlbit)
+  {
     case '0':
       { // ничего не делаем
         break;
@@ -852,9 +787,8 @@ void parser()
         delete_label_EEPROM(hash);
         break;
       }
-    }
+  }
 
-  */
 
   // блок который отвечает за активацию сенсоров
   parse_activity[2] = parse[parse_counter - 1];
@@ -945,42 +879,13 @@ int find_same_label(char* label)
 
 void check_arm()
 {
-  if (digitalRead(ARM_button) == HIGH)
-  {
-    set_on_arm();
-  }
 
-  if (digitalRead(DISARM_button) == HIGH)
-  {
-    digitalWrite(BEEP_pin, HIGH);
-    delay(300);
-    digitalWrite(BEEP_pin, LOW);
 
-    for (int i = 0; i < 250; i++)
-    {
-      if ( ! rfid.PICC_IsNewCardPresent())
-        continue;
-      // Verify if the NUID has been readed
-      if ( ! rfid.PICC_ReadCardSerial())
-        continue;
-      else break;
-    }
-    char card_num[13];
-    char buf[3];
-    sprintf(buf, "%d", rfid.uid.uidByte[0]);
-    strcpy(card_num, buf);
-    sprintf(buf, "%d", rfid.uid.uidByte[1]);
-    strcat(card_num, buf);
-    sprintf(buf, "%d", rfid.uid.uidByte[2]);
-    strcat(card_num, buf);
-    sprintf(buf, "%d", rfid.uid.uidByte[3]);
-    strcat(card_num, buf);
 
-    unsigned char* hash = MD5::make_hash(card_num);
-    char* md5str = MD5::make_digest(hash, 16);
-    Serial.println(md5str);
 
-    if (find_same_label(md5str) == 1) disarm();
-  }
+
+
+
+
 }
 
