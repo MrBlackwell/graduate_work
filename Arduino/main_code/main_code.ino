@@ -30,8 +30,9 @@ Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ, ADAFRUIT_CC3000_VBAT, SPI_CLOCK_DIVIDER);
 
 #define WLAN_SECURITY   WLAN_SEC_WPA2 // Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
-#define IDLE_TIMEOUT_MS  1000
-#define WEBSITE      "www.m92910dr.bget.ru"
+#define IDLE_TIMEOUT_MS  500
+#define WEBSITE      "securityathena.ru"
+//#define WEBSITE      "http://securityathena.ru"
 
 // Блок DEFINE
 // Нужные DEFы
@@ -42,7 +43,7 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
 // Сигнальные
 #define water_sensor 23
 #define motion_sensor 24
-#define fume_sensor 25
+#define fume_sensor 8
 #define penetration_sensor 26
 #define vibration_sensor 27
 
@@ -55,9 +56,10 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
 #define R_diod 30
 
 #define BEEP_pin 45
-#define ARM_diod 46
-#define ARM_button 47
-#define DISARM_button 48
+#define close_diod 46
+#define close_button 47
+#define open_button 48
+#define Cooler 25
 
 // Пины под сенсорную панель
 #define SCL_PIN 37
@@ -72,47 +74,48 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
 
 // прототипы функций
 void send_recv();
+void send_open_close(char* hash);
 int check_sensors();
 void activate_sensors();
 char* connection_data();
 char menu_choise();
 void write_string_EEPROM (int Addr, char* Str);
 char* read_string_EEPROM (int Addr, int lng);
-void set_on_arm();
-void disarm();
 void read_card();
 void parser();
 void write_label_EEPROM (char* label);
 void delete_label_EEPROM (char* label);
 int find_same_label(char* label);
-void check_arm();
+void open_close();
+
 //
 dht11 DHT;
 LiquidCrystal lcd(31, 32, 33, 34, 35, 36); // (RS, E, DB4, DB5, DB6, DB7)
 MFRC522 rfid(SS_PIN, RST_PIN); // Instance of the class
-uint32_t ip;
-Adafruit_CC3000_Client www;
-char parse[300];
+
+uint8_t macAddress[6];
+char parse[500];
 char parse_activity[3];
 int active_sensors[7];
 int parse_counter = 0;
+int cloze = 1;
+int buffer_RFID_activity = 1;
 
 
 void setup()
 {
   Serial.begin(115200);
   SPI.begin(); // Init SPI bus
-  rfid.PCD_Init(); // Init MFRC522
-  
+
   digitalWrite(B_diod, HIGH);
 
   lcd.begin(16, 2);                  // Задаем размерность экрана
+
 
   // Распиновки под MEGA
   pinMode(temperature_sensor, INPUT);
   pinMode(water_sensor, INPUT);
   pinMode(motion_sensor, INPUT);
-  pinMode(fume_sensor, INPUT);
   pinMode(penetration_sensor, INPUT);
   pinMode(vibration_sensor, INPUT);
 
@@ -120,8 +123,12 @@ void setup()
   pinMode(G_diod, OUTPUT); // RGB
   pinMode(B_diod, OUTPUT); // RGB
 
-  pinMode(ARM_diod, OUTPUT);
+  pinMode(close_diod, OUTPUT);
   pinMode(BEEP_pin, OUTPUT);
+  pinMode(close_button, INPUT);
+  pinMode(open_button, INPUT);
+  pinMode(Cooler, OUTPUT);
+  digitalWrite(Cooler, HIGH);
 
   /* Инициализация модуля */
   Serial.println();
@@ -240,67 +247,100 @@ void setup()
 
   /* Wait for DHCP to complete */
   Serial.println(F("Request DHCP"));
+  int reqs = 0;
   while (!cc3000.checkDHCP())
   {
     Serial.println(F("req"));
     delay(100); // ToDo: Insert a DHCP timeout!
+    reqs++;
   }
+  Serial.print(F("Request count = ")); Serial.print(reqs);
+  Serial.println();
+
+  /* Display the IP address DNS, Gateway, etc. */
+  displayConnectionDetails();
+  cc3000.getMacAddress(macAddress);
+
+  digitalWrite(close_diod, HIGH);
+  digitalWrite(BEEP_pin, HIGH);
+  delay(100);
+  digitalWrite(BEEP_pin, LOW);
+  cloze = 1;
+  char hash[33] = "00000000000000000000000000000000";
+  send_open_close(hash);
+  
+  Serial.println("Setup finished");
 }
 
 void loop()
 {
   send_recv();
-  check_arm();
-
-
+  open_close();
 }
 
 void send_recv()
 {
-  char WEBPAGE[30] = "/onoff.php";
-  char added_part[25] = "?sensors=";
+  Serial.println();
+  Serial.println("Send_recv function");
+  char WEBPAGE[100] = "/recvdata.php";
+  char added_part[100] = "?id=";
   parse_counter = 0;
-
-  ip = 0;
-  // Try looking up the website's IP address
-  while (ip == 0)
-  {
-    if (! cc3000.getHostByName(WEBSITE, &ip))
-    {
-      Serial.println(F("Couldn't resolve!"));
-    }
-    delay(500);
-  }
-
-  www = cc3000.connectTCP(ip, 80);
+  char temp[5];
 
 
-
-  // тут надо считывать значения в 5 разрядов + переводить
-  char temp[2];
-  sprintf(temp, "%d", check_sensors());
+  // id
+  sprintf(temp, "%d", macAddress[0]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[1]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[2]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[3]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[4]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[5]);
   strcat(added_part, temp);
 
+  // температура
   strcat(added_part, "&wet=");
   DHT.read(temperature_sensor);
   sprintf(temp, "%d", DHT.temperature);
-
   if (active_sensors[5] == 1) strcat(added_part, temp); // если датчик температуры включен
   else strcat(added_part, "0");
-
   strcat(added_part, "/");
   sprintf(temp, "%d", DHT.humidity);
-
   if (active_sensors[5] == 1) strcat(added_part, temp);
   else strcat(added_part, "0");
 
+  // сенсоры
+  strcat(added_part, "&sensors=");
+  sprintf(temp, "%d", check_sensors());
+  strcat(added_part, temp);
+
+  // собираем всё в одну строку
   strcat(WEBPAGE, added_part);
+
+
+  uint32_t ip = 0;
+  while (ip == 0)
+  {
+    cc3000.getHostByName(WEBSITE, &ip);
+  }
+
+  Adafruit_CC3000_Client www;
+
+  while (! www.connected())
+  {
+    www = cc3000.connectTCP(ip, 80);
+    Serial.println("Try to open TCP-connect");
+  }
+  Serial.println("Created TCP connect");
 
   // НАШ ЗАПРОС
   if (www.connected())
   {
     Serial.println();
-    Serial.println("Connection opened");
     Serial.print(WEBSITE); Serial.println(WEBPAGE);
     digitalWrite(B_diod, LOW);
     www.fastrprint(F("POST "));
@@ -317,14 +357,16 @@ void send_recv()
     digitalWrite(G_diod, LOW);
     lcd.setCursor(0, 1);
     lcd.print("Connected");       // Выводим текст
+    Serial.println("Request send");
   }
   else
   {
-    Serial.println(F("Connection failed"));
+    Serial.println(F("Connection failed.I will reset now"));
+    delay(20);
+    send_recv();
     return;
   }
 
-  Serial.println("Request send");
   // ПОЛУЧЕННЫЙ ОТВЕТ
   unsigned long lastRead = millis();
   while (www.connected() && (millis() - lastRead < IDLE_TIMEOUT_MS))
@@ -343,14 +385,35 @@ void send_recv()
   Serial.println("Connection closed");
 }
 
+bool displayConnectionDetails(void)
+{
+  uint32_t ipAddress, netmask, gateway, dhcpserv, dnsserv;
+
+  if (!cc3000.getIPAddress(&ipAddress, &netmask, &gateway, &dhcpserv, &dnsserv))
+  {
+    Serial.println(F("Unable to retrieve the IP Address! I will reset now\r\n"));
+    return false;
+  }
+  else
+  {
+    Serial.print(F("\nIP Addr: ")); cc3000.printIPdotsRev(ipAddress);
+    Serial.print(F("\nNetmask: ")); cc3000.printIPdotsRev(netmask);
+    Serial.print(F("\nGateway: ")); cc3000.printIPdotsRev(gateway);
+    Serial.print(F("\nDHCPsrv: ")); cc3000.printIPdotsRev(dhcpserv);
+    Serial.print(F("\nDNSserv: ")); cc3000.printIPdotsRev(dnsserv);
+    Serial.println();
+    return true;
+  }
+}
+
 int check_sensors()
 {
   int result = 0;
-  if ((digitalRead(motion_sensor) == HIGH) && (active_sensors[4] == 1)) result += 16;
-  if ((digitalRead(fume_sensor) == HIGH) && (active_sensors[3] == 1)) result += 8;
-  if ((digitalRead(water_sensor) == HIGH) && (active_sensors[2] == 1)) result += 4;
-  if ((digitalRead(vibration_sensor) == HIGH) && (active_sensors[1] == 1)) result += 2;
-  if ((digitalRead(penetration_sensor) == HIGH) && (active_sensors[0] == 1)) result += 1;
+  //if ((digitalRead(motion_sensor) == HIGH) && (active_sensors[4] == 1) && (cloze == 1)) result += 16;
+  if ((analogRead(fume_sensor) > 850) && (active_sensors[3] == 1) && (cloze == 1)) result += 8;
+  if ((digitalRead(water_sensor) == HIGH) && (active_sensors[2] == 1) && (cloze == 1)) result += 4;
+  if ((digitalRead(vibration_sensor) == HIGH) && (active_sensors[1] == 1) && (cloze == 1)) result += 2;
+  if ((digitalRead(penetration_sensor) == HIGH) && (active_sensors[0] == 1) && (cloze == 1)) result += 1;
   return result;
 }
 
@@ -365,10 +428,23 @@ void activate_sensors()
   while (num != 0)
   {
     int mod = num % 2;
-    active_sensors[6 - i] = mod;
+    active_sensors[i] = mod;
     num = num / 2;
     i++;
   }
+
+  if ((active_sensors[6] == 0) && (buffer_RFID_activity == 1))
+  {
+    digitalWrite(close_diod, HIGH);
+    digitalWrite(BEEP_pin, HIGH);
+    delay(100);
+    digitalWrite(BEEP_pin, LOW);
+    cloze = 1;
+    char hash[33] = "00000000000000000000000000000000";
+    send_open_close(hash);
+  }
+
+  buffer_RFID_activity = active_sensors[6];
 }
 
 char* connection_data()
@@ -706,30 +782,14 @@ char* read_string_EEPROM (int Addr, int lng)
   return buf;
 }
 
-void set_on_arm()
-{
-
-
-
-}
-
-void disarm()
-{
-
-
-
-
-
-}
-
 void read_card()
 {
-  int out = 0;
+  rfid.PCD_Init(); // Init MFRC522
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Attach card");       // Выводим текст
 
-  while (out == 0)
+  for (int i = 0; i < 250; i++)
   {
     // Look for new cards
     if ( ! rfid.PICC_IsNewCardPresent())
@@ -737,39 +797,49 @@ void read_card()
     // Verify if the NUID has been readed
     if ( ! rfid.PICC_ReadCardSerial())
       continue;
-    out = 1;
-  }
+    else
+    {
+      char card_num[13];
+      char buf[3];
+      sprintf(buf, "%d", rfid.uid.uidByte[0]);
+      strcpy(card_num, buf);
+      sprintf(buf, "%d", rfid.uid.uidByte[1]);
+      strcat(card_num, buf);
+      sprintf(buf, "%d", rfid.uid.uidByte[2]);
+      strcat(card_num, buf);
+      sprintf(buf, "%d", rfid.uid.uidByte[3]);
+      strcat(card_num, buf);
 
-  char card_num[13];
-  char buf[3];
-  sprintf(buf, "%d", rfid.uid.uidByte[0]);
-  strcpy(card_num, buf);
-  sprintf(buf, "%d", rfid.uid.uidByte[1]);
-  strcat(card_num, buf);
-  sprintf(buf, "%d", rfid.uid.uidByte[2]);
-  strcat(card_num, buf);
-  sprintf(buf, "%d", rfid.uid.uidByte[3]);
-  strcat(card_num, buf);
+      digitalWrite(BEEP_pin, HIGH);
+      delay(100);
+      digitalWrite(BEEP_pin, LOW);
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(card_num);       // Выводим текст
-  lcd.setCursor(0, 1);
-  lcd.print("1-Exit");       // Выводим текст
-  while (menu_choise() != '1')
-  {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(card_num);       // Выводим текст
+      lcd.setCursor(0, 1);
+      lcd.print("1-Exit");       // Выводим текст
+      while (menu_choise() != '1')
+      {
+      }
+      break;
+    }
   }
 }
 
 void parser()
 {
-  char hash[32];
+  char hash[33];
   for (int i = 0; i < 32; i++)
   {
     hash[i] = parse[parse_counter - 35 + i];
   }
+  hash[32] = '\0';
+  //Serial.println("Hash = "); Serial.println(hash);
 
   char controlbit = parse[parse_counter - 36];
+
+  //Serial.println("Control bit = "); Serial.println(controlbit);
 
   switch (controlbit)
   {
@@ -789,11 +859,11 @@ void parser()
       }
   }
 
-
   // блок который отвечает за активацию сенсоров
   parse_activity[2] = parse[parse_counter - 1];
   parse_activity[1] = parse[parse_counter - 2];
   parse_activity[0] = parse[parse_counter - 3];
+  //Serial.println("Pars act = "); Serial.println(parse_activity);
   activate_sensors();
   //
 }
@@ -877,15 +947,160 @@ int find_same_label(char* label)
   return reply;
 }
 
-void check_arm()
+void open_close()
 {
+  if ((digitalRead(close_button) == HIGH) && (active_sensors[6] == 1))
+  {
+    digitalWrite(close_diod, HIGH);
+    digitalWrite(BEEP_pin, HIGH);
+    delay(100);
+    digitalWrite(BEEP_pin, LOW);
+    cloze = 1;
+    char hash[33] = "00000000000000000000000000000000";
+    send_open_close(hash);
+  }
 
+  if ((digitalRead(open_button) == HIGH) && (active_sensors[6] == 1))
+  {
+    digitalWrite(BEEP_pin, HIGH);
+    delay(100);
+    digitalWrite(BEEP_pin, LOW);
+    rfid.PCD_Init(); // Init MFRC522
+    for (int i = 0; i < 250; i++)
+    {
+      if ( ! rfid.PICC_IsNewCardPresent())
+        continue;
+      // Verify if the NUID has been readed
+      if ( ! rfid.PICC_ReadCardSerial())
+        continue;
+      else
+      {
+        char card_num[13];
+        char buf[3];
+        sprintf(buf, "%d", rfid.uid.uidByte[0]);
+        strcpy(card_num, buf);
+        sprintf(buf, "%d", rfid.uid.uidByte[1]);
+        strcat(card_num, buf);
+        sprintf(buf, "%d", rfid.uid.uidByte[2]);
+        strcat(card_num, buf);
+        sprintf(buf, "%d", rfid.uid.uidByte[3]);
+        strcat(card_num, buf);
 
-
-
-
-
-
-
+        unsigned char* hash = MD5::make_hash(card_num);
+        char* md5str = MD5::make_digest(hash, 16);
+        if (find_same_label(md5str) == 1)
+        {
+          digitalWrite(close_diod, LOW);
+          digitalWrite(BEEP_pin, HIGH);
+          delay(100);
+          digitalWrite(BEEP_pin, LOW);
+          delay(100);
+          cloze = 0;
+          send_open_close(md5str);
+        }
+        break;
+      }
+    }
+    digitalWrite(BEEP_pin, HIGH);
+    delay(100);
+    digitalWrite(BEEP_pin, LOW);
+  }
 }
+
+void send_open_close(char* hash)
+{
+  Serial.println();
+  Serial.println("Send open_close function");
+  char WEBPAGE[100] = "/recvdata.php";
+  char added_part[100] = "?id=";
+  parse_counter = 0;
+  char temp[5];
+
+  // id
+  sprintf(temp, "%d", macAddress[0]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[1]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[2]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[3]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[4]);
+  strcat(added_part, temp);
+  sprintf(temp, "%d", macAddress[5]);
+  strcat(added_part, temp);
+
+  // open
+  strcat(added_part, "&close=");
+  sprintf(temp, "%d", cloze);
+  strcat(added_part, temp);
+
+  // hash
+  strcat(added_part, "&hash=");
+  strcat(added_part, hash);
+
+  // собираем всё в одну строку
+  strcat(WEBPAGE, added_part);
+
+  uint32_t ip = 0;
+  while (ip == 0)
+  {
+    cc3000.getHostByName(WEBSITE, &ip);
+  }
+
+  Adafruit_CC3000_Client www;
+
+  while (! www.connected())
+  {
+    www = cc3000.connectTCP(ip, 80);
+    Serial.println("Try to open TCP-connect");
+  }
+  Serial.println("Created TCP connect");
+
+  // НАШ ЗАПРОС
+  if (www.connected())
+  {
+    Serial.println();
+    Serial.print(WEBSITE); Serial.println(WEBPAGE);
+    digitalWrite(B_diod, LOW);
+    www.fastrprint(F("POST "));
+    www.fastrprint(WEBPAGE);
+    www.fastrprint(F(" HTTP/1.1\r\n"));
+    www.fastrprint(F("Host: "));
+    www.fastrprint(WEBSITE);
+    www.fastrprint(F("\r\n"));
+    www.fastrprint(F("\r\n"));
+    www.println();
+
+    digitalWrite(G_diod, HIGH);
+    delay(20);
+    digitalWrite(G_diod, LOW);
+    lcd.setCursor(0, 1);
+    lcd.print("Connected");       // Выводим текст
+    Serial.println("Request send");
+  }
+  else
+  {
+    Serial.println(F("Connection failed.I will reset now"));
+    delay(20);
+    send_recv();
+    return;
+  }
+  // ПОЛУЧЕННЫЙ ОТВЕТ
+  unsigned long lastRead = millis();
+  while (www.connected() && (millis() - lastRead < IDLE_TIMEOUT_MS))
+  {
+    while (www.available())
+    {
+      char c = www.read();
+      lastRead = millis();
+    }
+  }
+  Serial.println("Answer received");
+  www.close();
+  Serial.println("Connection closed");
+}
+
+
+
 
