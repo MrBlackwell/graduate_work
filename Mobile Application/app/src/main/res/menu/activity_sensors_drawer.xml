@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/sensors"
+            android:title="@string/itemSensors" />
+        <item
+            android:id="@+id/graphic"
+            android:title="@string/itemGrathics" />
+        <item
+            android:id="@+id/logs"
+            android:title="@string/itemLog" />
+        <item
+            android:id="@+id/users"
+            android:title="@string/itemUsers" />
+        <item
+            android:id="@+id/exit"
+            android:title="@string/itemExit" />
+    </group>
+
+</menu>

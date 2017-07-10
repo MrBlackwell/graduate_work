@@ -1,0 +1,103 @@
+<resources>
+    <string name="app_name">Athena</string>
+    <string name="enterlogin">Введите логин</string>
+    <string name="enterpassword">Введите пароль</string>
+    <string name="authorization">Авторизация</string>
+    <string name="enter">Войти</string>
+    <string name="fillerror">Требуется заполнить все поля</string>
+    <string name="errordata">Ошибка авторизации, проверьте правильность логина и пароля</string>
+    <string name="errorconnection">Проблема с подключением к серверу. Повторите попытку позднее</string>
+    <string name="jsonerror">Непредвиденная ошибка</string>
+    <string name="title_activity_sensors">Athena</string>
+
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+
+    <string name="action_settings">Настройки</string>
+
+    <string name="itemSensors">Датчики</string>
+    <string name="itemGrathics">График температуры/влажности</string>
+    <string name="itemLog">Логи</string>
+    <string name="itemUsers">Пользователи</string>
+    <string name="itemExit">Выход</string>
+    <string name="sensor_of_penetration">Датчик проникновения</string>
+    <string name="sensor_of_vibration">Датчик вибрации</string>
+    <string name="sensor_of_water">Датчик воды</string>
+    <string name="sensor_of_smoke">Датчик дыма</string>
+    <string name="sensor_of_moution">Датчик движения</string>
+    <string name="sensor_of_temperature_and_humidity">Датчик температуры и влажности</string>
+    <string name="sensor_RFID">Система пропусков</string>
+    <string name="temperature">Температура</string>
+    <string name="humidity">Влажность</string>
+    <string name="requestButton1">Запросить</string>
+
+    <string name="delete">Удалить</string>
+    <string name="FIO">ФИО</string>
+    <string name="root">Права</string>
+    <string name="admin">Admin</string>
+    <string name="user">User</string>
+    <string name="add_user">Добавить пользователя</string>
+    
+    <!--AddUserActivity-->
+    <string name="add_user_activity_title">Добавление пользователя</string>
+    <string name="add_name">Имя</string>
+    <string name="add_email">E-mail</string>
+    <string name="add_login">Логин (от 8 до 16 символов)</string>
+    <string name="add_password">Пароль (от 8 символов)</string>
+    <string name="add_password_repeat">Повторите пароль</string>
+    <string name="add_card">Номер карты (без пробелов)</string>
+    <string name="add_admin">Администратор</string>
+    <string name="add_button">Добавить</string>
+    <string name="add_password_error">Пароли не совпадают</string>
+    <string name="add_empty_error">Не все поля заполнены</string>
+    <string name="add_write_error">Такой логин или номер карты уже есть</string>
+    <string name="add_json_error">Непредвиденная ошибка. Попробуйте позже</string>
+    <string name="add_login_length_error">Либо короткий, либо длинный логин</string>
+    <string name="add_password_length_error">Короткий пароль</string>
+    <string name="add_complete">Запись прошла успешно</string>
+
+    <!--SettingsLayout-->
+    <string name="edit_name">Имя</string>
+    <string name="edit_email">E-mail</string>
+    <string name="edit_login">Логин (от 8 до 16 символов)</string>
+    <string name="edit_password">Пароль (от 8 символов)</string>
+    <string name="edit_password_repeat">Повторите пароль</string>
+    <string name="edit_button">Изменить</string>
+    <string name="edit_password_error">Пароли не совпадают</string>
+    <string name="edit_write_error">Такой логин или номер карты уже есть</string>
+    <string name="edit_json_error">Непредвиденная ошибка. Попробуйте позже</string>
+    <string name="edit_login_length_error">Либо короткий, либо длинный логин</string>
+    <string name="edit_password_length_error">Короткий пароль</string>
+    <string name="edit_complete">Запись прошла успешно</string>
+    <string name="edit_empty_error">Ни одно поле не заполнено</string>
+
+    <!--BackgroundService-->
+    <string name="service_ticker">Датчики</string>
+    <string name="service_alarm_title">Информация с датчиков</string>
+    <string name="service_alarm_64">Помещение открыли</string>
+    <string name="service_alarm_32">Критическое значение влажности или температуры</string>
+    <string name="service_alarm_16">Сработал датчик движения</string>
+    <string name="service_alarm_8">Сработал датчик дыма</string>
+    <string name="service_alarm_4">Сработал датчик воды</string>
+    <string name="service_alarm_2">Сработал датчик вибрации</string>
+    <string name="service_alarm_1">Сработал датчик проникновения</string>
+    <string name="service_alarm_0">Все датчики молчат</string>
+    <string name="service_state_title">Конфигурация датчиков</string>
+    <string name="service_state_64_on">Система пропусков включена</string>
+    <string name="service_state_32_on">Датчик температуры и влажности включен</string>
+    <string name="service_state_16_on">Датчик движения включен</string>
+    <string name="service_state_8_on">Датчик дыма включен</string>
+    <string name="service_state_4_on">Датчик воды включен</string>
+    <string name="service_state_2_on">Датчик вибрации включен</string>
+    <string name="service_state_1_on">Датчик проникновения включен</string>
+    <string name="service_state_64_off">Система пропусков выключена</string>
+    <string name="service_state_32_off">Датчик температуры и влажности выключен</string>
+    <string name="service_state_16_off">Датчик движения выключен</string>
+    <string name="service_state_8_off">Датчик дыма выключен</string>
+    <string name="service_state_4_off">Датчик воды выключен</string>
+    <string name="service_state_2_off">Датчик вибрации выключен</string>
+    <string name="service_state_1_off">Датчик проникновения выключен</string>
+
+    <string name="item_disable_notification">Отключить уведомления</string>
+    <string name="item_enable_notification">Включить уведомления</string>
+</resources>
